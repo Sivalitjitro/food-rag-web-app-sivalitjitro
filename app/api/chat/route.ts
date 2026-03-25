@@ -2,15 +2,6 @@ import { Index } from '@upstash/vector'
 import { createGroq } from '@ai-sdk/groq'
 import { generateText } from 'ai'
 
-const index = new Index({
-  url: process.env.UPSTASH_VECTOR_REST_URL!,
-  token: process.env.UPSTASH_VECTOR_REST_TOKEN!,
-})
-
-const groq = createGroq({
-  apiKey: process.env.GROQ_API_KEY,
-})
-
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
@@ -46,7 +37,19 @@ export async function POST(request: Request) {
 
     // Debug: Log partial URL to verify correct env var is being used
     const vectorUrl = process.env.UPSTASH_VECTOR_REST_URL || ''
+    const vectorToken = process.env.UPSTASH_VECTOR_REST_TOKEN || ''
     console.log('[v0] Vector URL prefix:', vectorUrl.substring(0, 30) + '...')
+    console.log('[v0] Vector token length:', vectorToken.length)
+
+    // Create Index and Groq client inside the function to ensure env vars are loaded
+    const index = new Index({
+      url: vectorUrl,
+      token: vectorToken,
+    })
+
+    const groq = createGroq({
+      apiKey: process.env.GROQ_API_KEY,
+    })
 
     const { query, model, history } = (await request.json()) as ChatRequest
 
