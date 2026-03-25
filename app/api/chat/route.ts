@@ -15,40 +15,31 @@ interface ChatRequest {
 
 export async function POST(request: Request) {
   try {
-    // Debug: Check environment variables
-    const envCheck = {
-      UPSTASH_VECTOR_REST_URL: !!process.env.UPSTASH_VECTOR_REST_URL,
-      UPSTASH_VECTOR_REST_TOKEN: !!process.env.UPSTASH_VECTOR_REST_TOKEN,
-      GROQ_API_KEY: !!process.env.GROQ_API_KEY,
-    }
-    console.log('[v0] Environment variables check:', envCheck)
-    
-    const missingVars = Object.entries(envCheck)
-      .filter(([, exists]) => !exists)
-      .map(([name]) => name)
-    
-    if (missingVars.length > 0) {
-      console.log('[v0] Missing environment variables:', missingVars)
+    // Validate required environment variables
+    const vectorUrl = process.env.UPSTASH_VECTOR_REST_URL
+    const vectorToken = process.env.UPSTASH_VECTOR_REST_TOKEN
+    const groqApiKey = process.env.GROQ_API_KEY
+
+    if (!vectorUrl || !vectorToken || !groqApiKey) {
+      const missing = [
+        !vectorUrl && 'UPSTASH_VECTOR_REST_URL',
+        !vectorToken && 'UPSTASH_VECTOR_REST_TOKEN',
+        !groqApiKey && 'GROQ_API_KEY',
+      ].filter(Boolean)
       return Response.json(
-        { error: `Missing environment variables: ${missingVars.join(', ')}` },
+        { error: `Missing environment variables: ${missing.join(', ')}` },
         { status: 500 }
       )
     }
 
-    // Debug: Log partial URL to verify correct env var is being used
-    const vectorUrl = process.env.UPSTASH_VECTOR_REST_URL || ''
-    const vectorToken = process.env.UPSTASH_VECTOR_REST_TOKEN || ''
-    console.log('[v0] Vector URL prefix:', vectorUrl.substring(0, 30) + '...')
-    console.log('[v0] Vector token length:', vectorToken.length)
-
-    // Create Index and Groq client inside the function to ensure env vars are loaded
+    // Create Index and Groq client
     const index = new Index({
       url: vectorUrl,
       token: vectorToken,
     })
 
     const groq = createGroq({
-      apiKey: process.env.GROQ_API_KEY,
+      apiKey: groqApiKey,
     })
 
     const { query, model, history } = (await request.json()) as ChatRequest
@@ -56,26 +47,13 @@ export async function POST(request: Request) {
     if (!query || typeof query !== 'string') {
       return Response.json({ error: 'Query is required' }, { status: 400 })
     }
-    
-    console.log('[v0] Query received:', query.substring(0, 50))
 
     // Search the vector database for relevant food information
-    console.log('[v0] Starting vector search...')
-    let searchResults
-    try {
-      searchResults = await index.query({
-        data: query,
-        topK: 5,
-        includeMetadata: true,
-      })
-      console.log('[v0] Vector search completed, results count:', searchResults.length)
-    } catch (vectorError) {
-      console.error('[v0] Vector search error:', vectorError)
-      return Response.json(
-        { error: `Vector database error: ${vectorError instanceof Error ? vectorError.message : 'Unknown error'}` },
-        { status: 500 }
-      )
-    }
+    const searchResults = await index.query({
+      data: query,
+      topK: 5,
+      includeMetadata: true,
+    })
 
     // Filter results with score > 0.5
     const relevantResults = searchResults.filter(
