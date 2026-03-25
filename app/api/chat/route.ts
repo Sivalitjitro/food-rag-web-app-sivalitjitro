@@ -24,18 +24,55 @@ interface ChatRequest {
 
 export async function POST(request: Request) {
   try {
+    // Debug: Check environment variables
+    const envCheck = {
+      UPSTASH_VECTOR_REST_URL: !!process.env.UPSTASH_VECTOR_REST_URL,
+      UPSTASH_VECTOR_REST_TOKEN: !!process.env.UPSTASH_VECTOR_REST_TOKEN,
+      GROQ_API_KEY: !!process.env.GROQ_API_KEY,
+    }
+    console.log('[v0] Environment variables check:', envCheck)
+    
+    const missingVars = Object.entries(envCheck)
+      .filter(([, exists]) => !exists)
+      .map(([name]) => name)
+    
+    if (missingVars.length > 0) {
+      console.log('[v0] Missing environment variables:', missingVars)
+      return Response.json(
+        { error: `Missing environment variables: ${missingVars.join(', ')}` },
+        { status: 500 }
+      )
+    }
+
+    // Debug: Log partial URL to verify correct env var is being used
+    const vectorUrl = process.env.UPSTASH_VECTOR_REST_URL || ''
+    console.log('[v0] Vector URL prefix:', vectorUrl.substring(0, 30) + '...')
+
     const { query, model, history } = (await request.json()) as ChatRequest
 
     if (!query || typeof query !== 'string') {
       return Response.json({ error: 'Query is required' }, { status: 400 })
     }
+    
+    console.log('[v0] Query received:', query.substring(0, 50))
 
     // Search the vector database for relevant food information
-    const searchResults = await index.query({
-      data: query,
-      topK: 5,
-      includeMetadata: true,
-    })
+    console.log('[v0] Starting vector search...')
+    let searchResults
+    try {
+      searchResults = await index.query({
+        data: query,
+        topK: 5,
+        includeMetadata: true,
+      })
+      console.log('[v0] Vector search completed, results count:', searchResults.length)
+    } catch (vectorError) {
+      console.error('[v0] Vector search error:', vectorError)
+      return Response.json(
+        { error: `Vector database error: ${vectorError instanceof Error ? vectorError.message : 'Unknown error'}` },
+        { status: 500 }
+      )
+    }
 
     // Filter results with score > 0.5
     const relevantResults = searchResults.filter(
